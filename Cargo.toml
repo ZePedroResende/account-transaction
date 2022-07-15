@@ -13,28 +13,28 @@ authors = [
 # Core dependencies: runtime, HTTP framework and database client.
 futures = "0.3"
 tokio = { version = "1.14.0", features = ["macros", "rt-multi-thread"] }
-axum = { version = "0.3.4", features = ["tower-log"] }
-sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "uuid", "time"] }
+axum = { version = "0.5.12", features = ["tower-log"] }
+sqlx = { version = "0.6.0", features = ["runtime-tokio-native-tls", "postgres", "uuid", "time", "bigdecimal"] }
 
 # The `clap` beta gives us a much nicer way to define configuration parameters for our application.
-clap = "3.0.0-beta.5"
+clap = {version = "3.2.12", features = ["env"]}
 
 serde = { version = "1.0.130", features = ["derive"] }
 
 # State of the art password hashing.
-argon2 = "0.3.1"
+argon2 = "0.4.1"
 
 # Axum builds on the types in Tower
 tower = "0.4.11"
-tower-http = { version = "0.2.0", features = ["trace"] }
+tower-http = { version = "0.3.4", features = ["trace"] }
 
-jwt = "0.15.0"
-hmac = "0.11.0"
-sha2 = "0.9.8"
+jwt = "0.16.0"
+hmac = "0.12.1"
+sha2 = "0.10.2"
 
-time = "0.2"
+time = "0.3.11"
 
-uuid = { version = "0.8", features = ["serde"] }
+uuid = { version = "1.1.2", features = ["serde"] }
 
 # Utility Crates
 anyhow = "1.0.48"
@@ -45,3 +45,9 @@ itertools = "0.10.1"
 log = "0.4.14"
 rand = "0.8.4"
 thiserror = "1.0.30"
+
+# ethereum 
+ethers = { git = "https://github.com/gakonst/ethers-rs", features=["ws", "openssl"] }
+
+chrono = "0.4.19"
+rust_decimal = "1.25.0"

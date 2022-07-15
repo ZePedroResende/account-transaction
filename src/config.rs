@@ -18,6 +18,18 @@ pub struct Config {
     #[clap(long, env)]
     pub database_url: String,
 
+    /// The provider url
+    #[clap(long, env)]
+    pub provider_url: String,
+
+    /// The provider username
+    #[clap(long, env)]
+    pub provider_username: String,
+
+    /// The provider password
+    #[clap(long, env)]
+    pub provider_password: String,
+
     /// The HMAC signing and verification key used for login tokens (JWTs).
     ///
     /// There is no required structure or format to this key as it's just fed into a hash function.

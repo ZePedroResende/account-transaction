@@ -11,7 +11,12 @@ use clap::Parser;
 use sqlx::postgres::PgPoolOptions;
 
 use realworld_axum_sqlx::config::Config;
-use realworld_axum_sqlx::http;
+use realworld_axum_sqlx::indexer;
+
+use ethers::prelude::*;
+use ethers::providers::{Authorization, Provider, Ws};
+use log::info;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -44,8 +49,29 @@ async fn main() -> anyhow::Result<()> {
     // is migrated correctly on startup
     sqlx::migrate!().run(&db).await?;
 
+    info!("Connecting to provider...");
+
+    let provider: Provider<Ws> = Provider::<Ws>::connect_with_auth(
+        config.provider_url,
+        Authorization::basic(config.provider_username, config.provider_password),
+    )
+    .await?;
+    let provider = Arc::new(provider);
+
+    info!("Connected to provider !");
+
+    let mut stream = provider.watch_blocks().await?.take(5);
+    while let Some(block) = stream.next().await {
+        let block = provider.get_block(block).await?.unwrap();
+        println!(
+            "Ts: {:?}, block number: {} -> {:?}",
+            block.timestamp,
+            block.number.unwrap(),
+            block.hash.unwrap()
+        );
+    }
+
     // Finally, we spin up our API.
-    http::serve(config, db).await?;
 
     Ok(())
 }
