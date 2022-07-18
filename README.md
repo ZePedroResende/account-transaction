@@ -101,7 +101,8 @@ The following command will start version 14 of Postgres (the latest at time of w
 (this command should also work with [Podman], a daemonless FOSS alternative).
 
 ```shell
-$ docker run -d --name postgres-14 -p 5432:5432 -e POSTGRES_PASSWORD={password} postgres:14
+$ docker run -d --name postgres-14 --network="host" -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:14 
+$ docker run -d --name pgadmin --network="host" -p 8090:80 -e PGADMIN_DEFAULT_EMAIL=admin@admin.com -e PGADMIN_DEFAULT_PASSWORD=postgres dpage/pgadmin4
 ```
 
 Set `{password}` to a password of your choosing.

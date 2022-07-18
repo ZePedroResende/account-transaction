@@ -48,6 +48,6 @@ thiserror = "1.0.30"
 
 # ethereum 
 ethers = { git = "https://github.com/gakonst/ethers-rs", features=["ws", "openssl"] }
-
+url = "2.2"
 chrono = "0.4.19"
 rust_decimal = "1.25.0"

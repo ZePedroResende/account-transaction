@@ -49,12 +49,11 @@ pub async fn insert_transaction_from_block(
     transaction: &Transaction,
     db: Arc<Pool<Postgres>>,
 ) -> Result<()> {
-    info!("Processing transaction : {}", block_id);
     //let is_contract_transfer ;
-    let from = transaction.from.to_string();
+    let from = format!("{:?}", transaction.from);
     let to = transaction
         .to
-        .map_or_else(|| String::new(), |t| t.to_string());
+        .map_or_else(|| String::new(), |t| format!("{:?}", t));
 
     let diogo = Address::from_str("0x4435e31fB15844436390F3c9819e32976edD0564")?;
 
@@ -62,12 +61,14 @@ pub async fn insert_transaction_from_block(
         return Ok(());
     };
 
+    info!("Processing transaction : {}", block_id);
+
     let value = u256_decimal(transaction.value)?;
     let gas = u256_decimal(transaction.gas)?;
     let gas_price: Option<BigDecimal> = transaction
         .gas_price
         .and_then(|price| u256_decimal(price).ok());
-    let tx_hash = transaction.hash.to_string();
+    let tx_hash = format!("{:?}", transaction.hash);
 
     //let contract_to = transaction.input[10..-64];
     //let contract_value= transaction.input[74..];

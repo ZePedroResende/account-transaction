@@ -10,13 +10,16 @@ use anyhow::Context;
 use clap::Parser;
 use sqlx::postgres::PgPoolOptions;
 
+use anyhow::Result;
 use realworld_axum_sqlx::config::Config;
-use realworld_axum_sqlx::indexer;
+use realworld_axum_sqlx::indexer::{self, insert_transactions_from_block};
 
 use ethers::prelude::*;
-use ethers::providers::{Authorization, Provider, Ws};
+use ethers::providers::{Authorization, Http, Provider};
+use futures::{stream, StreamExt};
 use log::info;
 use std::sync::Arc;
+use url::Url;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -51,25 +54,91 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Connecting to provider...");
 
-    let provider: Provider<Ws> = Provider::<Ws>::connect_with_auth(
-        config.provider_url,
+    let http: Http = Http::new_with_auth(
+        Url::parse(&config.provider_url).unwrap(),
         Authorization::basic(config.provider_username, config.provider_password),
-    )
-    .await?;
+    )?;
+
+    let provider: Provider<Http> = Provider::new(http);
+
     let provider = Arc::new(provider);
 
     info!("Connected to provider !");
 
-    let mut stream = provider.watch_blocks().await?.take(5);
-    while let Some(block) = stream.next().await {
-        let block = provider.get_block(block).await?.unwrap();
-        println!(
-            "Ts: {:?}, block number: {} -> {:?}",
-            block.timestamp,
-            block.number.unwrap(),
-            block.hash.unwrap()
-        );
-    }
+    //    let mut stream = provider.watch_blocks().await?;
+
+    //    while let Some(block) = stream.next().await {
+    //        let block = provider.get_block(block).await?.unwrap();
+    //        println!(
+    //            "Ts: {:?}, block number: {} -> {:?}",
+    //            block.timestamp,
+    //            block.number.unwrap(),
+    //            block.hash.unwrap()
+    //        );
+    //    }
+
+    //let start_block = 13217541;
+    let start_block = 13380000;
+
+    let mut current_block = start_block;
+
+    let mut last_block = provider
+        .get_block(BlockNumber::Latest)
+        .await?
+        .unwrap()
+        .number
+        .unwrap()
+        .as_u64();
+
+    let db_arc = Arc::new(db);
+
+    //   while current_block < last_block {
+    //       tokio::spawn(async {
+    //           let block = indexer::transaction_from_block(provider.clone(), current_block.clone())
+    //               .await
+    //               .unwrap();
+    //           insert_transactions_from_block(provider.clone(), block, db_arc.clone()).await;
+    //       });
+
+    //       //   last_block = provider
+    //       //       .get_block(BlockNumber::Latest)
+    //       //       .await?
+    //       //       .unwrap()
+    //       //       .number
+    //       //       .unwrap()
+    //       //       .as_u64();
+
+    //       current_block. += 1;
+    //   }
+
+    stream::iter(current_block..last_block)
+        .map(|block_id| {
+            let p = provider.clone();
+            let d = db_arc.clone();
+            async move {
+                let block = indexer::transaction_from_block(p.clone(), block_id)
+                    .await
+                    .unwrap();
+                insert_transactions_from_block(p.clone(), block, d).await;
+                Ok(())
+            }
+        })
+        .buffer_unordered(60)
+        .collect::<Vec<Result<()>>>()
+        .await;
+
+    info!("synced !");
+    info!("Formed a stream");
+    //    let mut stream = provider.watch_blocks().await?;
+    //    while let Some(block) = stream.next().await {
+    //        let block = provider.get_block(block).await?.unwrap();
+    //        println!(
+    //            "Ts: {:?}, block number: {} -> {:?}",
+    //            block.timestamp,
+    //            block.number.unwrap(),
+    //            block.hash.unwrap()
+    //        );
+    //    }
 
     // Finally, we spin up our API.
 
