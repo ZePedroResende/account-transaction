@@ -1,3 +1,10 @@
+#![deny(
+    clippy::all,
+    clippy::restriction,
+    clippy::pedantic,
+    clippy::nursery,
+    clippy::cargo
+)]
 // The normal style for documenting modules is to place the doc-comments inside the module
 // files at the top with `//!`, known as internal doc comments.
 //
