@@ -2,10 +2,11 @@ use anyhow::{anyhow, Result};
 use ethers::core::types::{Block, Transaction};
 use ethers::prelude::*;
 use ethers::providers::{Http, Middleware, Provider};
+use futures::stream::FuturesUnordered;
 use log::{error, info};
-use sqlx::pool::{Pool, PoolConnection};
+use sqlx::pool::Pool;
 use sqlx::types::BigDecimal;
-use sqlx::{Executor, Postgres};
+use sqlx::Postgres;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -24,22 +25,41 @@ pub async fn insert_transactions_from_block(
     provider: Arc<Provider<Http>>,
     block: Block<Transaction>,
     db: Arc<Pool<Postgres>>,
-) {
+) -> Result<()> {
     let time = block.time().unwrap().timestamp() as i32;
     let block_id = block.number.unwrap();
     let transactions = block.transactions;
+
+    let mut tasks = FuturesUnordered::new();
+
     info!("Processing block : {}", block_id);
 
-    for transaction in transactions.iter() {
-        insert_transaction_from_block(provider.clone(), time, block_id, transaction, db.clone())
+    for transaction in transactions.into_iter() {
+        let provider = provider.clone();
+        let db = db.clone();
+        tasks.push(tokio::spawn(async move {
+            insert_transaction_from_block(
+                provider.clone(),
+                time,
+                block_id,
+                &transaction,
+                db.clone(),
+            )
             .await
-            .map_err(|e| {
-                error!(
-                    "Failed to insert transaction on block {}  with transaction hash {} with error {}",
-                    block_id, transaction.hash, e
-                );
-            });
+        }));
     }
+    while let Some(item) = tasks.next().await {
+        item.map_err(|e| {
+            error!("Failed to with error {}", e);
+        })
+        .map_err(|_| {
+            error!("Failed to with error ");
+        })
+        .map_err(|_| {
+            error!("Failed to with error ");
+        });
+    }
+    Ok(())
 }
 
 pub async fn insert_transaction_from_block(
@@ -100,7 +120,7 @@ pub async fn insert_transaction_from_block(
         status
  );
 
-    let sql = sqlx::query!(
+    sqlx::query!(
         r#"INSERT INTO public.ethtxs(time, txfrom, txto, value, gas, gasprice, block, txhash, contract_to, contract_value, status)
            VALUES ($1, $2::TEXT::CITEXT, $3::TEXT::CITEXT, $4, $5, $6, $7, $8::TEXT::CITEXT, $9::TEXT::CITEXT, $10::TEXT::CITEXT, $11)"#,
         time,

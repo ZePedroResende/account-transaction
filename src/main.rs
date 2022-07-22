@@ -10,16 +10,18 @@ use anyhow::Context;
 use clap::Parser;
 use sqlx::postgres::PgPoolOptions;
 
-use anyhow::Result;
+use log::{error, info};
 use realworld_axum_sqlx::config::Config;
 use realworld_axum_sqlx::indexer::{self, insert_transactions_from_block};
 
 use ethers::prelude::*;
 use ethers::providers::{Authorization, Http, Provider};
-use futures::{stream, StreamExt};
-use log::info;
+use futures::{StreamExt, TryFutureExt};
+use indicatif::ProgressBar;
 use std::sync::Arc;
 use url::Url;
+
+use futures::stream::FuturesUnordered;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -110,22 +112,48 @@ async fn main() -> anyhow::Result<()> {
 
     //       current_block. += 1;
     //   }
+    //    let pb = ProgressBar::new(last_block - current_block);
+    //
+    //    stream::iter(current_block..last_block)
+    //        .map(|block_id| {
+    //            let p = provider.clone();
+    //            let d = db_arc.clone();
+    //            let pb = pb.clone();
+    //            async move {
+    //                let block = indexer::transaction_from_block(p.clone(), block_id)
+    //                    .await
+    //                    .unwrap();
+    //                insert_transactions_from_block(p.clone(), block, d).await;
+    //                pb.inc(1);
+    //                Ok(())
+    //            }
+    //        })
+    //        .buffer_unordered(60)
+    //        .collect::<Vec<Result<()>>>()
+    //        .await;
 
-    stream::iter(current_block..last_block)
-        .map(|block_id| {
+    let pb = ProgressBar::new(last_block - current_block);
+
+    let mut tasks = FuturesUnordered::new();
+
+    (current_block..last_block)
+        .into_iter()
+        .for_each(|block_id| {
             let p = provider.clone();
             let d = db_arc.clone();
-            async move {
-                let block = indexer::transaction_from_block(p.clone(), block_id)
-                    .await
-                    .unwrap();
-                insert_transactions_from_block(p.clone(), block, d).await;
-                Ok(())
-            }
-        })
-        .buffer_unordered(60)
-        .collect::<Vec<Result<()>>>()
-        .await;
+            let pb = pb.clone();
+            tasks.push(tokio::spawn(async move {
+                indexer::transaction_from_block(p.clone(), block_id)
+                    .and_then(move |block| insert_transactions_from_block(p.clone(), block, d))
+            }));
+            pb.inc(1);
+        });
+
+    while let Some(item) = tasks.next().await {
+        item.map_err(|e| {
+            error!("Failed to with error {}", e);
+        });
+    }
 
     info!("synced !");
     info!("Formed a stream");

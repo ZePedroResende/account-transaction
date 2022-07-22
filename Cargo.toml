@@ -46,11 +46,20 @@ log = "0.4.14"
 rand = "0.8.4"
 thiserror = "1.0.30"
 
-# ethereum 
+indicatif = "0.13.0"
+
+# ethereum
 ethers = { git = "https://github.com/gakonst/ethers-rs", features=["ws", "openssl"] }
 url = "2.2"
 chrono = "0.4.19"
 rust_decimal = "1.25.0"
 
-[profile.dev.package]
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+overflow-checks = true
+strip = true
+
+[profile.dev.package."*"]
 opt-level = 3
