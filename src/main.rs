@@ -145,14 +145,15 @@ async fn main() -> anyhow::Result<()> {
             tasks.push(tokio::spawn(async move {
                 indexer::transaction_from_block(p.clone(), block_id)
                     .and_then(move |block| insert_transactions_from_block(p.clone(), block, d))
+                    .await
             }));
-            pb.inc(1);
         });
 
     while let Some(item) = tasks.next().await {
         item.map_err(|e| {
             error!("Failed to with error {}", e);
         });
+        pb.inc(1);
     }
 
     info!("synced !");
