@@ -75,13 +75,13 @@ pub async fn insert_transaction_from_block(
         .to
         .map_or_else(|| String::new(), |t| format!("{:?}", t));
 
-    let diogo = Address::from_str("0x4435e31fB15844436390F3c9819e32976edD0564")?;
+    //let diogo = Address::from_str("0x4435e31fB15844436390F3c9819e32976edD0564")?;
 
-    if transaction.from != diogo && transaction.to != Some(diogo) {
-        return Ok(());
-    };
+    //if transaction.from != diogo && transaction.to != Some(diogo) {
+    //    return Ok(());
+    //};
 
-    info!("Processing transaction : {}", block_id);
+    //info!("Processing transaction : {}", block_id);
 
     let value = u256_decimal(transaction.value)?;
     let gas = u256_decimal(transaction.gas)?;
@@ -106,19 +106,19 @@ pub async fn insert_transaction_from_block(
 
     let block_id_big = u64_decimal(block_id)?;
 
-    info!("inserting transaction : time {} from {} to {} value {} gas {} gas_price {:#?} block_id_big {} tx_hash {} contract_to {} contract_value {} status {} ", 
-        time,
-        from,
-        to,
-        value,
-        gas,
-        gas_price,
-        block_id_big,
-        tx_hash,
-        contract_to,
-        contract_value,
-        status
- );
+    //    info!("inserting transaction : time {} from {} to {} value {} gas {} gas_price {:#?} block_id_big {} tx_hash {} contract_to {} contract_value {} status {} ",
+    //        time,
+    //        from,
+    //        to,
+    //        value,
+    //        gas,
+    //        gas_price,
+    //        block_id_big,
+    //        tx_hash,
+    //        contract_to,
+    //        contract_value,
+    //        status
+    // );
 
     sqlx::query!(
         r#"INSERT INTO public.ethtxs(time, txfrom, txto, value, gas, gasprice, block, txhash, contract_to, contract_value, status)

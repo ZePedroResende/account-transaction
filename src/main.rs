@@ -17,7 +17,7 @@ use realworld_axum_sqlx::indexer::{self, insert_transactions_from_block};
 use ethers::prelude::*;
 use ethers::providers::{Authorization, Http, Provider};
 use futures::{StreamExt, TryFutureExt};
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::sync::Arc;
 use url::Url;
 
@@ -133,27 +133,32 @@ async fn main() -> anyhow::Result<()> {
     //        .await;
 
     let pb = ProgressBar::new(last_block - current_block);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+        .progress_chars("#>-"));
 
-    let mut tasks = FuturesUnordered::new();
+    //(current_block..last_block)
+    //    .into_iter()
+    //    .for_each(|block_id| async move {
+    //        let p = provider.clone();
+    //        let d = db_arc.clone();
+    //        let pb = pb.clone();
+    //        pb.inc(1);
+    //        indexer::transaction_from_block(p.clone(), block_id)
+    //            .and_then(move |block| insert_transactions_from_block(p.clone(), block, d))
+    //            .await
+    //    });
 
-    (current_block..last_block)
-        .into_iter()
-        .for_each(|block_id| {
-            let p = provider.clone();
-            let d = db_arc.clone();
-            let pb = pb.clone();
-            tasks.push(tokio::spawn(async move {
-                indexer::transaction_from_block(p.clone(), block_id)
-                    .and_then(move |block| insert_transactions_from_block(p.clone(), block, d))
-                    .await
-            }));
-        });
-
-    while let Some(item) = tasks.next().await {
-        item.map_err(|e| {
-            error!("Failed to with error {}", e);
-        });
+    while current_block < last_block {
+        let p = provider.clone();
+        let d = db_arc.clone();
+        let pb = pb.clone();
+        pb.set_message(&format!("Processing block {}", current_block + 1));
         pb.inc(1);
+        indexer::transaction_from_block(p.clone(), current_block)
+            .and_then(move |block| insert_transactions_from_block(p.clone(), block, d))
+            .await;
+        current_block += 1;
     }
 
     info!("synced !");
