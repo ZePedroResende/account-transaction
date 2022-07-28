@@ -143,19 +143,31 @@ async fn main() -> anyhow::Result<()> {
     //             .and_then(move |block| insert_transactions_from_block(p.clone(), &block, d))
     //             .await
     //     });
+
+    let pb = ProgressBar::new(last_block - current_block);
+
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})")
+            .progress_chars("#>-"),
+    );
+
     let mut tasks = FuturesUnordered::new();
     while current_block < last_block {
         let p = provider.clone();
         let d = db_arc.clone();
         let block = indexer::transaction_from_block(p.clone(), current_block).await?;
+        let pb = pb.clone();
         tasks.push(tokio::spawn(async move {
-            insert_transactions_from_block(p.clone(), block, d).await
+            let out = insert_transactions_from_block(p.clone(), block, d).await;
+            pb.inc(1);
+            out
         }));
         current_block += 1;
     }
 
     while let Some(item) = tasks.next().await {
-        item.unwrap_err();
+        println!("error: {:?}", item.unwrap_err());
     }
 
     info!("synced !");

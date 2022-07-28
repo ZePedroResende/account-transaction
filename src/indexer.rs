@@ -30,7 +30,6 @@ pub async fn insert_transactions_from_block(
     let block_id = block.number.unwrap();
     let transactions = &block.transactions;
     let time = vec![block.time().unwrap().timestamp() as i32; transactions.len()];
-    println!("processing block: {:?}", block_id);
 
     let from: Vec<String> = transactions
         .par_iter()
