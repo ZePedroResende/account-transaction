@@ -603,9 +603,7 @@ dependencies = [
  "encode_unicode",
  "libc",
  "once_cell",
- "regex",
  "terminal_size",
- "unicode-width",
  "winapi",
 ]
 
@@ -1827,25 +1825,13 @@ dependencies = [
 
 [[package]]
 name = "indicatif"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8572bccfb0665e70b7faf44ee28841b8e0823450cd4ad562a76b5a3c4bf48487"
-dependencies = [
- "console 0.15.0",
- "lazy_static",
- "number_prefix 0.3.0",
- "regex",
-]
-
-[[package]]
-name = "indicatif"
 version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d207dc617c7a380ab07ff572a6e52fa202a2a8f355860ac9c38e23f8196be1b"
 dependencies = [
  "console 0.15.0",
  "lazy_static",
- "number_prefix 0.4.0",
+ "number_prefix",
  "regex",
 ]
 
@@ -2148,12 +2134,6 @@ checksum = "2819ce041d2ee131036f4fc9d6ae7ae125a3a40e97ba64d04fe799ad9dabbb44"
 dependencies = [
  "libc",
 ]
-
-[[package]]
-name = "number_prefix"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17b02fc0ff9a9e4b35b3342880f48e896ebf69f2967921fe8646bf5b7125956a"
 
 [[package]]
 name = "number_prefix"
@@ -2638,11 +2618,12 @@ dependencies = [
  "ethers",
  "futures",
  "hmac",
- "indicatif 0.13.0",
+ "indicatif",
  "itertools",
  "jwt",
  "log",
  "rand",
+ "rayon",
  "rust_decimal",
  "serde",
  "sha2 0.10.2",
@@ -3346,7 +3327,7 @@ dependencies = [
  "fs2",
  "hex",
  "home",
- "indicatif 0.16.2",
+ "indicatif",
  "itertools",
  "once_cell",
  "rand",

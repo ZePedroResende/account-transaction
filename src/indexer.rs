@@ -4,6 +4,7 @@ use ethers::prelude::*;
 use ethers::providers::{Http, Middleware, Provider};
 use futures::stream::FuturesUnordered;
 use log::{error, info};
+use rayon::prelude::*;
 use sqlx::pool::Pool;
 use sqlx::types::BigDecimal;
 use sqlx::Postgres;
@@ -26,39 +27,73 @@ pub async fn insert_transactions_from_block(
     block: Block<Transaction>,
     db: Arc<Pool<Postgres>>,
 ) -> Result<()> {
-    let time = block.time().unwrap().timestamp() as i32;
     let block_id = block.number.unwrap();
-    let transactions = block.transactions;
+    let transactions = &block.transactions;
+    let time = vec![block.time().unwrap().timestamp() as i32; transactions.len()];
+    println!("processing block: {:?}", block_id);
 
-    let mut tasks = FuturesUnordered::new();
+    let from: Vec<String> = transactions
+        .par_iter()
+        .map(|transaction| format!("{:?}", transaction.from))
+        .collect();
 
-    info!("Processing block : {}", block_id);
+    let to: Vec<String> = transactions
+        .par_iter()
+        .map(|transaction| {
+            transaction
+                .to
+                .map_or_else(|| String::new(), |t| format!("{:?}", t))
+        })
+        .collect();
 
-    for transaction in transactions.into_iter() {
-        let provider = provider.clone();
-        let db = db.clone();
-        tasks.push(tokio::spawn(async move {
-            insert_transaction_from_block(
-                provider.clone(),
-                time,
-                block_id,
-                &transaction,
-                db.clone(),
+    let value: Vec<BigDecimal> = transactions
+        .par_iter()
+        .map(|transaction| u256_decimal(transaction.value).unwrap())
+        .collect();
+
+    let gas: Vec<BigDecimal> = transactions
+        .par_iter()
+        .map(|transaction| u256_decimal(transaction.gas).unwrap())
+        .collect();
+
+    let gas_price: Vec<BigDecimal> = transactions
+        .par_iter()
+        .map(|transaction| {
+            transaction.gas_price.map_or_else(
+                || BigDecimal::from(0),
+                |price| u256_decimal(price).unwrap_or_else(|_| BigDecimal::from(0)),
             )
-            .await
-        }));
-    }
-    while let Some(item) = tasks.next().await {
-        item.map_err(|e| {
-            error!("Failed to with error {}", e);
         })
-        .map_err(|_| {
-            error!("Failed to with error ");
-        })
-        .map_err(|_| {
-            error!("Failed to with error ");
-        });
-    }
+        .collect::<Vec<BigDecimal>>();
+
+    let tx_hash: Vec<String> = transactions
+        .par_iter()
+        .map(|transaction| format!("{:?}", transaction.hash))
+        .collect();
+
+    let contract_to = vec![String::new(); transactions.len()];
+    let contract_value = vec![String::new(); transactions.len()];
+
+    let block_id_big = vec![u64_decimal(block_id).unwrap(); transactions.len()];
+    let status = vec![true; transactions.len()];
+
+    sqlx::query!(
+        r#"INSERT INTO public.ethtxs(time, txfrom, txto, value, gas, gasprice, block, txhash, contract_to, contract_value, status)
+          SELECT * FROM UNNEST($1::INTEGER[], $2::TEXT[]::CITEXT[], $3::TEXT[]::CITEXT[], $4::NUMERIC[], $5::NUMERIC[], $6::NUMERIC[], $7::NUMERIC[], $8::TEXT[]::CITEXT[], $9::TEXT[]::CITEXT[], $10::TEXT[]::CITEXT[], $11::BOOL[])"#,
+       &time[..],
+       &from[..],
+       &to[..],
+       &value[..],
+       &gas[..],
+       &gas_price[..],
+       &block_id_big[..],
+       &tx_hash[..],
+       &contract_to[..],
+       &contract_value[..],
+       &status[..]
+    ).execute(&*db).await
+    ?;
+
     Ok(())
 }
 
@@ -75,13 +110,7 @@ pub async fn insert_transaction_from_block(
         .to
         .map_or_else(|| String::new(), |t| format!("{:?}", t));
 
-    //let diogo = Address::from_str("0x4435e31fB15844436390F3c9819e32976edD0564")?;
-
-    //if transaction.from != diogo && transaction.to != Some(diogo) {
-    //    return Ok(());
-    //};
-
-    //info!("Processing transaction : {}", block_id);
+    info!("Processing transaction : {}", block_id);
 
     let value = u256_decimal(transaction.value)?;
     let gas = u256_decimal(transaction.gas)?;
@@ -89,9 +118,6 @@ pub async fn insert_transaction_from_block(
         .gas_price
         .and_then(|price| u256_decimal(price).ok());
     let tx_hash = format!("{:?}", transaction.hash);
-
-    //let contract_to = transaction.input[10..-64];
-    //let contract_value= transaction.input[74..];
 
     let contract_to = String::new();
     let contract_value = String::new();
@@ -105,20 +131,6 @@ pub async fn insert_transaction_from_block(
         .is_some();
 
     let block_id_big = u64_decimal(block_id)?;
-
-    //    info!("inserting transaction : time {} from {} to {} value {} gas {} gas_price {:#?} block_id_big {} tx_hash {} contract_to {} contract_value {} status {} ",
-    //        time,
-    //        from,
-    //        to,
-    //        value,
-    //        gas,
-    //        gas_price,
-    //        block_id_big,
-    //        tx_hash,
-    //        contract_to,
-    //        contract_value,
-    //        status
-    // );
 
     sqlx::query!(
         r#"INSERT INTO public.ethtxs(time, txfrom, txto, value, gas, gasprice, block, txhash, contract_to, contract_value, status)
@@ -139,6 +151,8 @@ pub async fn insert_transaction_from_block(
 
     Ok(())
 }
+
+fn encode_transaction(transaction: &Transaction) {}
 
 fn u256_decimal(src: U256) -> Result<BigDecimal> {
     let b = BigDecimal::from_str(&src.to_string())?;

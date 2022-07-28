@@ -45,8 +45,8 @@ itertools = "0.10.1"
 log = "0.4.14"
 rand = "0.8.4"
 thiserror = "1.0.30"
-
-indicatif = "0.13.0"
+rayon = "1.5.3"
+indicatif = "0.16.2"
 
 # ethereum
 ethers = { git = "https://github.com/gakonst/ethers-rs", features=["ws", "openssl"] }
