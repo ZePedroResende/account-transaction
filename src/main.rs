@@ -6,7 +6,7 @@
 // to put the application bootstrap logic here is an open question. Both approaches have their
 // upsides and their downsides. Your input is welcome!
 
-use anyhow::Context;
+use anyhow::{Context, Result};
 use clap::Parser;
 use sqlx::postgres::PgPoolOptions;
 
@@ -16,8 +16,8 @@ use realworld_axum_sqlx::indexer::{self, insert_transactions_from_block};
 
 use ethers::prelude::*;
 use ethers::providers::{Authorization, Http, Provider};
+use futures::stream;
 use futures::stream::FuturesUnordered;
-use futures::FutureExt;
 use futures::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::sync::Arc;
@@ -61,7 +61,10 @@ async fn main() -> anyhow::Result<()> {
         Authorization::basic(config.provider_username, config.provider_password),
     )?;
 
-    let provider: Provider<Http> = Provider::new(http);
+    let retry_client: RetryClient<Http> =
+        RetryClient::new(http, Box::new(HttpRateLimitRetryPolicy), 1000, 10);
+
+    let provider: Provider<RetryClient<Http>> = Provider::<RetryClient<Http>>::new(retry_client);
 
     let provider = Arc::new(provider);
 
@@ -153,23 +156,62 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let mut tasks = FuturesUnordered::new();
-    while current_block < last_block {
-        let p = provider.clone();
-        let d = db_arc.clone();
-        let block = indexer::transaction_from_block(p.clone(), current_block).await?;
-        let pb = pb.clone();
-        tasks.push(tokio::spawn(async move {
-            let out = insert_transactions_from_block(p.clone(), block, d).await;
-            pb.inc(1);
-            out
-        }));
-        current_block += 1;
-    }
+    //    while current_block < last_block {
+    //        let p = provider.clone();
+    //        let d = db_arc.clone();
+    //        let block = indexer::transaction_from_block(p.clone(), current_block).await?;
+    //        let pb = pb.clone();
+    //        tasks.push(tokio::spawn(async move {
+    //            let out = insert_transactions_from_block(p.clone(), block, d).await;
+    //            pb.inc(1);
+    //            out
+    //        }));
+    //        current_block += 1;
+    //    }
+    //    while let Some(item) = tasks.next().await {
+    //        println!("error: {:?}", item.unwrap_err());
+    //    }
+
+    //    let s = stream::iter(current_block..last_block)
+    //        .map(|block_id| {
+    //            let p = provider.clone();
+    //            let d = db_arc.clone();
+    //            let pb = pb.clone();
+    //            let tasks = tasks.clone();
+    //            tasks.push(tokio::spawn(async move {
+    //                let block = indexer::transaction_from_block(p.clone(), current_block).await?;
+    //
+    //                pb.inc(1);
+    //                insert_transactions_from_block(p.clone(), block, d).await
+    //            }));
+    //        })
+    //        .buffer_unordered(60);
+    //
+    //    s.for_each(|a| async { println!("{:?}", a) });
+    //
+    stream::iter(current_block..last_block)
+        .map(|block_id| {
+            let p = provider.clone();
+            let d = db_arc.clone();
+            let pb = pb.clone();
+            let tasks = &tasks;
+            async move {
+                tasks.push(tokio::spawn(async move {
+                    let block = indexer::transaction_from_block(p.clone(), current_block).await?;
+
+                    pb.inc(1);
+                    insert_transactions_from_block(p.clone(), block, d).await
+                }));
+                Ok(())
+            }
+        })
+        .buffer_unordered(10)
+        .collect::<Vec<Result<()>>>()
+        .await;
 
     while let Some(item) = tasks.next().await {
-        println!("error: {:?}", item.unwrap_err());
+        item.map_err(|e| println!("error: {:?}", e));
     }
-
     info!("synced !");
 
     Ok(())

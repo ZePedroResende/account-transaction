@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use ethers::core::types::{Block, Transaction};
 use ethers::prelude::*;
-use ethers::providers::{Http, Middleware, Provider};
+use ethers::providers::{Http, JsonRpcClient, Middleware, Provider};
 use futures::stream::FuturesUnordered;
 use log::{error, info};
 use rayon::prelude::*;
@@ -11,10 +11,14 @@ use sqlx::Postgres;
 use std::str::FromStr;
 use std::sync::Arc;
 
-pub async fn transaction_from_block(
-    provider: Arc<Provider<Http>>,
+pub async fn transaction_from_block<T>(
+    provider: Arc<Provider<T>>,
     block_id: u64,
-) -> Result<Block<Transaction>> {
+) -> Result<Block<Transaction>>
+where
+    T: JsonRpcClient,
+    T::Error: Sync + Send + 'static,
+{
     let block = provider.get_block_with_txs(block_id).await?;
     match block {
         Some(block) => Ok(block),
@@ -22,11 +26,15 @@ pub async fn transaction_from_block(
     }
 }
 
-pub async fn insert_transactions_from_block(
-    provider: Arc<Provider<Http>>,
+pub async fn insert_transactions_from_block<T>(
+    provider: Arc<Provider<T>>,
     block: Block<Transaction>,
     db: Arc<Pool<Postgres>>,
-) -> Result<()> {
+) -> Result<()>
+where
+    T: JsonRpcClient,
+    T::Error: Sync + Send + 'static,
+{
     let block_id = block.number.unwrap();
     let transactions = &block.transactions;
     let time = vec![block.time().unwrap().timestamp() as i32; transactions.len()];
