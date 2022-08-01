@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use ethers::core::types::{Block, Transaction};
 use ethers::prelude::*;
 use ethers::providers::{Http, JsonRpcClient, Middleware, Provider};
@@ -28,9 +28,11 @@ pub async fn insert_transactions_from_block(
     block: Block<Transaction>,
     db: Arc<Pool<Postgres>>,
 ) -> Result<()> {
-    let block_id = block.number.unwrap();
+    let block_id = block.number.context("no block id")?;
     let transactions = &block.transactions;
-    let time = vec![block.time().unwrap().timestamp() as i32; transactions.len()];
+    let block_time = block.time()?.timestamp();
+    let block_time_i32 = i32::try_from(block_time)?;
+    let time = vec![block_time_i32; transactions.len()];
 
     let from: Vec<String> = transactions
         .par_iter()
@@ -48,12 +50,12 @@ pub async fn insert_transactions_from_block(
 
     let value: Vec<BigDecimal> = transactions
         .par_iter()
-        .map(|transaction| u256_decimal(transaction.value).unwrap())
+        .map(|transaction| u256_decimal(transaction.value).unwrap_or_else(|_| BigDecimal::from(0)))
         .collect();
 
     let gas: Vec<BigDecimal> = transactions
         .par_iter()
-        .map(|transaction| u256_decimal(transaction.gas).unwrap())
+        .map(|transaction| u256_decimal(transaction.gas).unwrap_or_else(|_| BigDecimal::from(0)))
         .collect();
 
     let gas_price: Vec<BigDecimal> = transactions

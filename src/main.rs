@@ -62,9 +62,9 @@ async fn main() -> anyhow::Result<()> {
     let last_block = provider
         .get_block(BlockNumber::Latest)
         .await?
-        .unwrap()
+        .context("Cant get block")?
         .number
-        .unwrap()
+        .context("Cant get block number")?
         .as_u64();
 
     let db_arc = Arc::new(db);
