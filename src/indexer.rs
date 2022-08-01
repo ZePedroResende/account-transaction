@@ -2,8 +2,7 @@ use anyhow::{anyhow, Result};
 use ethers::core::types::{Block, Transaction};
 use ethers::prelude::*;
 use ethers::providers::{Http, JsonRpcClient, Middleware, Provider};
-use futures::stream::FuturesUnordered;
-use log::{error, info};
+use log::info;
 use rayon::prelude::*;
 use sqlx::pool::Pool;
 use sqlx::types::BigDecimal;
@@ -21,20 +20,14 @@ where
 {
     let block = provider.get_block_with_txs(block_id).await?;
     match block {
-        Some(block) => Ok(block),
+        Some(b) => Ok(b),
         None => Err(anyhow!("Not a valid block")),
     }
 }
-
-pub async fn insert_transactions_from_block<T>(
-    provider: Arc<Provider<T>>,
+pub async fn insert_transactions_from_block(
     block: Block<Transaction>,
     db: Arc<Pool<Postgres>>,
-) -> Result<()>
-where
-    T: JsonRpcClient,
-    T::Error: Sync + Send + 'static,
-{
+) -> Result<()> {
     let block_id = block.number.unwrap();
     let transactions = &block.transactions;
     let time = vec![block.time().unwrap().timestamp() as i32; transactions.len()];
@@ -49,7 +42,7 @@ where
         .map(|transaction| {
             transaction
                 .to
-                .map_or_else(|| String::new(), |t| format!("{:?}", t))
+                .map_or_else(String::new, |t| format!("{:?}", t))
         })
         .collect();
 
@@ -81,23 +74,24 @@ where
     let contract_to = vec![String::new(); transactions.len()];
     let contract_value = vec![String::new(); transactions.len()];
 
-    let block_id_big = vec![u64_decimal(block_id).unwrap(); transactions.len()];
+    let block_id_big = u64_decimal(block_id)?;
+    let block_ids = vec![block_id_big; transactions.len()];
     let status = vec![true; transactions.len()];
 
     sqlx::query!(
         r#"INSERT INTO public.ethtxs(time, txfrom, txto, value, gas, gasprice, block, txhash, contract_to, contract_value, status)
           SELECT * FROM UNNEST($1::INTEGER[], $2::TEXT[]::CITEXT[], $3::TEXT[]::CITEXT[], $4::NUMERIC[], $5::NUMERIC[], $6::NUMERIC[], $7::NUMERIC[], $8::TEXT[]::CITEXT[], $9::TEXT[]::CITEXT[], $10::TEXT[]::CITEXT[], $11::BOOL[])"#,
-       &time[..],
-       &from[..],
-       &to[..],
-       &value[..],
-       &gas[..],
-       &gas_price[..],
-       &block_id_big[..],
-       &tx_hash[..],
-       &contract_to[..],
-       &contract_value[..],
-       &status[..]
+       &*time,
+       &*from,
+       &*to,
+       &*value,
+       &*gas,
+       &*gas_price,
+       &*block_ids,
+       &*tx_hash,
+       &*contract_to,
+       &*contract_value,
+       &*status
     ).execute(&*db).await
     ?;
 
@@ -115,7 +109,7 @@ pub async fn insert_transaction_from_block(
     let from = format!("{:?}", transaction.from);
     let to = transaction
         .to
-        .map_or_else(|| String::new(), |t| format!("{:?}", t));
+        .map_or_else(String::new, |t| format!("{:?}", t));
 
     info!("Processing transaction : {}", block_id);
 
@@ -158,8 +152,6 @@ pub async fn insert_transaction_from_block(
 
     Ok(())
 }
-
-fn encode_transaction(transaction: &Transaction) {}
 
 fn u256_decimal(src: U256) -> Result<BigDecimal> {
     let b = BigDecimal::from_str(&src.to_string())?;

@@ -25,33 +25,18 @@ use url::Url;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // This returns an error if the `.env` file doesn't exist, but that's not what we want
-    // since we're not going to use a `.env` file if we deploy this application.
     dotenv::dotenv().ok();
 
-    // Initialize the logger.
     env_logger::init();
 
-    // Parse our configuration from the environment.
-    // This will exit with a help message if something is wrong.
     let config = Config::parse();
 
-    // We create a single connection pool for SQLx that's shared across the whole application.
-    // This saves us from opening a new connection for every API call, which is wasteful.
     let db = PgPoolOptions::new()
-        // The default connection limit for a Postgres server is 100 connections, minus 3 for superusers.
-        // Since we're using the default superuser we don't have to worry about this too much,
-        // although we should leave some connections available for manual access.
-        //
-        // If you're deploying your application with multiple replicas, then the total
-        // across all replicas should not exceed the Postgres connection limit.
-        .max_connections(50)
+        .max_connections(90)
         .connect(&config.database_url)
         .await
         .context("could not connect to database_url")?;
 
-    // This embeds database migrations in the application binary so we can ensure the database
-    // is migrated correctly on startup
     sqlx::migrate!().run(&db).await?;
 
     info!("Connecting to provider...");
@@ -70,24 +55,11 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Connected to provider !");
 
-    //    let mut stream = provider.watch_blocks().await?;
+    let start_block = 13217541;
 
-    //    while let Some(block) = stream.next().await {
-    //        let block = provider.get_block(block).await?.unwrap();
-    //        println!(
-    //            "Ts: {:?}, block number: {} -> {:?}",
-    //            block.timestamp,
-    //            block.number.unwrap(),
-    //            block.hash.unwrap()
-    //        );
-    //    }
+    let current_block = start_block;
 
-    //let start_block = 13217541;
-    let start_block = 13380000;
-
-    let mut current_block = start_block;
-
-    let mut last_block = provider
+    let last_block = provider
         .get_block(BlockNumber::Latest)
         .await?
         .unwrap()
@@ -96,56 +68,6 @@ async fn main() -> anyhow::Result<()> {
         .as_u64();
 
     let db_arc = Arc::new(db);
-
-    //   while current_block < last_block {
-    //       tokio::spawn(async {
-    //           let block = indexer::transaction_from_block(provider.clone(), current_block.clone())
-    //               .await
-    //               .unwrap();
-    //           insert_transactions_from_block(provider.clone(), block, db_arc.clone()).await;
-    //       });
-
-    //       //   last_block = provider
-    //       //       .get_block(BlockNumber::Latest)
-    //       //       .await?
-    //       //       .unwrap()
-    //       //       .number
-    //       //       .unwrap()
-    //       //       .as_u64();
-
-    //       current_block. += 1;
-    //   }
-    //    let pb = ProgressBar::new(last_block - current_block);
-    //
-    //    stream::iter(current_block..last_block)
-    //        .map(|block_id| {
-    //            let p = provider.clone();
-    //            let d = db_arc.clone();
-    //            let pb = pb.clone();
-    //            async move {
-    //                let block = indexer::transaction_from_block(p.clone(), block_id)
-    //                    .await
-    //                    .unwrap();
-    //                insert_transactions_from_block(p.clone(), block, d).await;
-    //                pb.inc(1);
-    //                Ok(())
-    //            }
-    //        })
-    //        .buffer_unordered(60)
-    //        .collect::<Vec<Result<()>>>()
-    //        .await;
-
-    // (current_block..last_block)
-    //     .into_iter()
-    //     .for_each(|block_id| async move {
-    //         let p = provider.clone();
-    //         let d = db_arc.clone();
-    //         let pb = pb.clone();
-    //         pb.inc(1);
-    //         indexer::transaction_from_block(p.clone(), block_id)
-    //             .and_then(move |block| insert_transactions_from_block(p.clone(), &block, d))
-    //             .await
-    //     });
 
     let pb = ProgressBar::new(last_block - current_block);
 
@@ -156,63 +78,41 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let mut tasks = FuturesUnordered::new();
-    //    while current_block < last_block {
-    //        let p = provider.clone();
-    //        let d = db_arc.clone();
-    //        let block = indexer::transaction_from_block(p.clone(), current_block).await?;
-    //        let pb = pb.clone();
-    //        tasks.push(tokio::spawn(async move {
-    //            let out = insert_transactions_from_block(p.clone(), block, d).await;
-    //            pb.inc(1);
-    //            out
-    //        }));
-    //        current_block += 1;
-    //    }
-    //    while let Some(item) = tasks.next().await {
-    //        println!("error: {:?}", item.unwrap_err());
-    //    }
 
-    //    let s = stream::iter(current_block..last_block)
-    //        .map(|block_id| {
-    //            let p = provider.clone();
-    //            let d = db_arc.clone();
-    //            let pb = pb.clone();
-    //            let tasks = tasks.clone();
-    //            tasks.push(tokio::spawn(async move {
-    //                let block = indexer::transaction_from_block(p.clone(), current_block).await?;
-    //
-    //                pb.inc(1);
-    //                insert_transactions_from_block(p.clone(), block, d).await
-    //            }));
-    //        })
-    //        .buffer_unordered(60);
-    //
-    //    s.for_each(|a| async { println!("{:?}", a) });
-    //
     stream::iter(current_block..last_block)
         .map(|block_id| {
-            let p = provider.clone();
             let d = db_arc.clone();
-            let pb = pb.clone();
             let tasks = &tasks;
+            let provider = provider.clone();
             async move {
+                let block = indexer::transaction_from_block(provider, block_id).await?;
                 tasks.push(tokio::spawn(async move {
-                    let block = indexer::transaction_from_block(p.clone(), current_block).await?;
-
-                    pb.inc(1);
-                    insert_transactions_from_block(p.clone(), block, d).await
+                    insert_transactions_from_block(block, d).await
                 }));
                 Ok(())
             }
         })
-        .buffer_unordered(10)
+        .buffer_unordered(1)
         .collect::<Vec<Result<()>>>()
         .await;
 
+    let mut errors = Vec::new();
+
     while let Some(item) = tasks.next().await {
-        item.map_err(|e| println!("error: {:?}", e));
+        match item {
+            Ok(result) => match result {
+                Ok(_) => pb.inc(1),
+                Err(e) => {
+                    error!("{}", e);
+                    errors.push(e);
+                }
+            },
+            Err(e) => info!("{}", e),
+        }
     }
+
     info!("synced !");
+    println!("synced !");
 
     Ok(())
 }
