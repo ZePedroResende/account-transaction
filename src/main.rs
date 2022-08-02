@@ -79,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut tasks = FuturesUnordered::new();
 
-    stream::iter(current_block..last_block)
+    let stream = stream::iter(current_block..last_block)
         .map(|block_id| {
             let d = db_arc.clone();
             let tasks = &tasks;
@@ -110,6 +110,15 @@ async fn main() -> anyhow::Result<()> {
             Err(e) => info!("{}", e),
         }
     }
+
+    for item in stream.into_iter() {
+        match item {
+            Ok(_) => pb.inc(1),
+            Err(e) => info!("{}", e),
+        }
+    }
+
+    println!("error length {}", errors.len());
 
     info!("synced !");
     println!("synced !");
